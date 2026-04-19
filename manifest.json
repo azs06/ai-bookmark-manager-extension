@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "AI Bookmarks",
+  "version": "0.1.0",
+  "description": "Save the current page to your AI bookmark manager.",
+  "permissions": ["activeTab", "storage", "alarms", "bookmarks"],
+  "host_permissions": [
+    "https://bookmarks.soikat.dev/*",
+    "https://ai-bookmark-manager.*.workers.dev/*"
+  ],
+  "action": {
+    "default_title": "Save to AI Bookmarks",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  }
+}

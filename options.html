@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AI Bookmarks — Settings</title>
+  <style>
+    body { font: 14px system-ui; max-width: 440px; margin: 24px auto; padding: 0 16px; color: #0f172a; }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    p { color: #475569; font-size: 13px; }
+    label { display: block; margin-top: 14px; font-weight: 500; }
+    input { width: 100%; padding: 8px; margin-top: 4px; font: inherit; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; }
+    button { margin-top: 16px; padding: 8px 16px; border: 0; background: #0f172a; color: white; border-radius: 6px; cursor: pointer; }
+    .ok { color: #16a34a; margin-left: 10px; }
+    hr { margin-top: 28px; border: 0; border-top: 1px solid #e2e8f0; }
+    h2 { font-size: 15px; margin-top: 20px; margin-bottom: 4px; }
+    #importStatus { margin-top: 10px; font-size: 13px; color: #475569; min-height: 18px; }
+    #import:disabled { opacity: 0.5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <h1>AI Bookmarks settings</h1>
+  <p>Point the extension at your Worker. Auth uses your browser session — log into the dashboard once and the extension rides the same cookie.</p>
+
+  <label>API base URL
+    <input id="apiBase" type="url" placeholder="https://bookmarks.soikat.dev" />
+  </label>
+
+  <button id="save">Save</button>
+  <span id="ok" class="ok" hidden>Saved.</span>
+
+  <hr />
+  <h2>Import Chrome bookmarks</h2>
+  <p>One-time migration. Folder paths become tags. Duplicates are skipped. Items won't be AI-enriched automatically — click ↻ on any card to enrich.</p>
+  <button id="import">Import all</button>
+  <div id="importStatus"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>
