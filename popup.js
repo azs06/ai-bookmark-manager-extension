@@ -19,9 +19,15 @@ document.getElementById('save').addEventListener('click', async () => {
         return;
       }
       if (!resp?.ok) {
-        status.textContent = resp?.queued ? 'Queued (offline). Will sync later.' : 'Error saving.';
+        status.textContent = resp?.queued
+          ? `${resp.error ?? 'Temporary error.'} Queued for retry.`
+          : (resp?.error ?? 'Error saving.');
       } else {
-        status.textContent = resp.duplicate ? 'Already saved ✓' : 'Saved ✓';
+        status.textContent = resp.restored
+          ? 'Restored ✓'
+          : resp.duplicate
+            ? 'Already saved ✓'
+            : 'Saved ✓';
       }
     },
   );
