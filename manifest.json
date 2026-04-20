@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "AI Bookmarks",
   "version": "0.1.0",
-  "description": "Save the current page to your AI bookmark manager.",
+  "description": "Companion extension for the AI Bookmark Manager app.",
   "permissions": ["activeTab", "storage", "alarms", "bookmarks"],
-  "host_permissions": [
-    "https://bookmarks.soikat.dev/*",
-    "https://ai-bookmark-manager.*.workers.dev/*"
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "action": {
     "default_title": "Save to AI Bookmarks",

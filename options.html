@@ -19,14 +19,15 @@
 </head>
 <body>
   <h1>AI Bookmarks settings</h1>
-  <p>Point the extension at your Worker. Auth uses your browser session — log into the dashboard once and the extension rides the same cookie.</p>
+  <p>Point the extension at your AI Bookmark Manager app. Auth uses your browser session — log into the dashboard once and the extension rides the same cookie.</p>
 
   <label>API base URL
-    <input id="apiBase" type="url" placeholder="https://bookmarks.soikat.dev" />
+    <input id="apiBase" type="url" placeholder="https://your-ai-bookmarks.example.com" />
   </label>
 
   <button id="save">Save</button>
   <span id="ok" class="ok" hidden>Saved.</span>
+  <div id="saveStatus" style="margin-top: 10px; font-size: 13px; color: #475569; min-height: 18px;"></div>
 
   <hr />
   <h2>Import Chrome bookmarks</h2>

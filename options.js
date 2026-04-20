@@ -14,12 +14,41 @@ const SYNTHETIC_ROOTS = new Set([
 })();
 
 $('save').addEventListener('click', async () => {
-  await chrome.storage.local.set({
-    apiBase: $('apiBase').value.trim().replace(/\/$/, ''),
-  });
+  const saveStatus = $('saveStatus');
+  saveStatus.textContent = '';
+
+  const raw = $('apiBase').value.trim();
+  if (!raw) {
+    saveStatus.textContent = 'Enter your app URL first.';
+    return;
+  }
+
+  let apiBase;
+  try {
+    apiBase = normalizeApiBase(raw);
+  } catch (err) {
+    saveStatus.textContent = (err).message;
+    return;
+  }
+
+  const current = await chrome.storage.local.get(['apiBase']);
+  const currentPattern = current.apiBase ? toOriginPattern(current.apiBase) : null;
+  const nextPattern = toOriginPattern(apiBase);
+  const granted = await chrome.permissions.request({ origins: [nextPattern] });
+  if (!granted) {
+    saveStatus.textContent = 'Host permission is required to talk to your app.';
+    return;
+  }
+
+  await chrome.storage.local.set({ apiBase });
+  if (currentPattern && currentPattern !== nextPattern) {
+    await chrome.permissions.remove({ origins: [currentPattern] });
+  }
+
   const ok = $('ok');
   ok.hidden = false;
   setTimeout(() => { ok.hidden = true; }, 1500);
+  saveStatus.textContent = `Saved ${apiBase}`;
 });
 
 $('import').addEventListener('click', runImport);
@@ -100,4 +129,23 @@ function flattenTree(nodes, path = []) {
     out.push(...flattenTree(node.children, nextPath));
   }
   return out;
+}
+
+function normalizeApiBase(raw) {
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('Enter a valid http(s) URL.');
+  }
+
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('API base URL must use http or https.');
+  }
+
+  return url.origin;
+}
+
+function toOriginPattern(apiBase) {
+  return `${new URL(apiBase).origin}/*`;
 }
