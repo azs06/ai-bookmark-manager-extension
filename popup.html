@@ -7,6 +7,8 @@
     body { font: 14px system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; width: 280px; color: #0f172a; }
     button { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #334155; background: #0f172a; color: white; border-radius: 6px; cursor: pointer; }
     button:hover { background: #1e293b; }
+    button.secondary { background: white; color: #0f172a; margin-top: 8px; }
+    button.secondary:hover { background: #f1f5f9; }
     #status { margin-top: 10px; color: #475569; font-size: 13px; min-height: 18px; }
     .hint { margin-top: 10px; font-size: 11px; color: #94a3b8; }
     a { color: #2563eb; }
@@ -14,6 +16,7 @@
 </head>
 <body>
   <button id="save">Save current page</button>
+  <button id="openSite" class="secondary">Open bookmarks</button>
   <div id="status"></div>
   <div class="hint">Not configured? <a href="#" id="openOptions">Open settings</a></div>
   <script src="popup.js"></script>

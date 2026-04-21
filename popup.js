@@ -33,6 +33,17 @@ document.getElementById('save').addEventListener('click', async () => {
   );
 });
 
+document.getElementById('openSite').addEventListener('click', async () => {
+  const { apiBase } = await chrome.storage.local.get(['apiBase']);
+  if (!apiBase) {
+    status.textContent = 'Set the API base URL in settings first.';
+    chrome.runtime.openOptionsPage();
+    return;
+  }
+  await chrome.tabs.create({ url: apiBase, active: true });
+  window.close();
+});
+
 document.getElementById('openOptions').addEventListener('click', (e) => {
   e.preventDefault();
   chrome.runtime.openOptionsPage();
