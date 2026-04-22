@@ -5,7 +5,7 @@
   <title>Save bookmark</title>
   <style>
     body { font: 14px system-ui, -apple-system, sans-serif; margin: 0; padding: 14px; width: 280px; color: #0f172a; }
-    button { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #334155; background: #0f172a; color: white; border-radius: 6px; cursor: pointer; }
+    button { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #334155; background: #0f172a; color: white; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
     button:hover { background: #1e293b; }
     button.secondary { background: white; color: #0f172a; margin-top: 8px; }
     button.secondary:hover { background: #f1f5f9; }
@@ -14,14 +14,45 @@
     button[disabled] { opacity: 0.6; cursor: default; }
     #savedNote { margin-bottom: 8px; font-size: 13px; color: #15803d; }
     #status { margin-top: 10px; color: #475569; font-size: 13px; min-height: 18px; }
+    #status a { color: #2563eb; text-decoration: underline; cursor: pointer; }
     .hint { margin-top: 10px; font-size: 11px; color: #94a3b8; }
     a { color: #2563eb; }
+    .rss-icon { flex-shrink: 0; }
+    /* Candidate picker: shown when the page exposes multiple feeds. */
+    #candidates { margin-top: 8px; display: none; flex-direction: column; gap: 4px; }
+    #candidates.show { display: flex; }
+    .candidate {
+      width: 100%;
+      text-align: left;
+      background: white;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .candidate:hover { border-color: #2563eb; }
+    .candidate-title { font-weight: 500; font-size: 13px; }
+    .candidate-meta { font-size: 11px; color: #64748b; word-break: break-all; }
   </style>
 </head>
 <body>
   <div id="savedNote" hidden>Saved to your library ✓</div>
   <button id="save" hidden>Save current page</button>
   <button id="remove" class="secondary danger" hidden>Remove from library</button>
+  <button id="subscribe" class="secondary">
+    <svg class="rss-icon" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="2" width="20" height="20" rx="4" fill="#f26522"/>
+      <circle cx="7" cy="17" r="2" fill="#ffffff"/>
+      <path d="M5 11a8 8 0 0 1 8 8h-2.5A5.5 5.5 0 0 0 5 13.5V11z" fill="#ffffff"/>
+      <path d="M5 5a14 14 0 0 1 14 14h-2.5A11.5 11.5 0 0 0 5 7.5V5z" fill="#ffffff"/>
+    </svg>
+    Subscribe with RSS
+  </button>
+  <div id="candidates"></div>
   <button id="openSite" class="secondary">Open bookmarks</button>
   <div id="status"></div>
   <div class="hint">Not configured? <a href="#" id="openOptions">Open settings</a></div>

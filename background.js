@@ -40,6 +40,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleRemove(msg).then(sendResponse);
     return true;
   }
+  if (msg?.type === 'subscribe') {
+    handleSubscribe(msg).then(sendResponse);
+    return true;
+  }
   if (msg?.type === 'check-saved') {
     isUrlSaved(msg.url).then((saved) => sendResponse({ saved }));
     return true;
@@ -149,6 +153,79 @@ async function postBookmark(body) {
     throw makeError(message);
   }
   return r.json();
+}
+
+// Subscribe translates the backend's three success/near-success shapes into
+// a single flat response for the popup: candidates list, already-subscribed
+// with feed_id, or committed subscription.
+async function handleSubscribe({ url }) {
+  try {
+    const resp = await postFeed({ url });
+    if (resp.candidates) {
+      return { ok: false, candidates: resp.candidates };
+    }
+    if (resp.alreadySubscribed) {
+      return { ok: false, alreadySubscribed: true, feedId: resp.feedId ?? null };
+    }
+    return {
+      ok: true,
+      feedTitle: resp.body?.feed?.title ?? null,
+      itemsAdded: resp.body?.items_added ?? 0,
+    };
+  } catch (err) {
+    if (err?.authRequired) {
+      await openDashboard();
+      return { ok: false, authRequired: true, error: err.message };
+    }
+    return { ok: false, error: err?.message ?? 'Subscribe failed' };
+  }
+}
+
+async function postFeed(body) {
+  const { apiBase } = await chrome.storage.local.get(['apiBase']);
+  if (!apiBase) {
+    throw makeError('Open settings and configure the API base URL first.');
+  }
+
+  let r;
+  try {
+    r = await fetch(`${apiBase}/api/feeds`, {
+      method: 'POST',
+      credentials: 'include',
+      redirect: 'manual',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw makeError('Network error while subscribing.');
+  }
+
+  if (r.type === 'opaqueredirect') {
+    throw makeError('Session expired. Log in to AI Bookmarks again.', { authRequired: true });
+  }
+
+  // 300 multiple-choices: page exposes >1 feed. Return the list untouched.
+  if (r.status === 300) {
+    const data = await safeJson(r);
+    return { candidates: Array.isArray(data?.candidates) ? data.candidates : [] };
+  }
+  // 409: already subscribed. Surface the existing feed_id for the deep link.
+  if (r.status === 409) {
+    const data = await safeJson(r);
+    return { alreadySubscribed: true, feedId: typeof data?.feed_id === 'number' ? data.feed_id : null };
+  }
+
+  if (!r.ok) {
+    if (r.status === 401 || r.status === 403) {
+      throw makeError('Session expired. Log in to AI Bookmarks again.', { authRequired: true });
+    }
+    throw makeError(await readErrorMessage(r));
+  }
+  return { body: await r.json() };
+}
+
+async function safeJson(response) {
+  try { return await response.clone().json(); } catch { return null; }
 }
 
 async function postRemove(body) {
