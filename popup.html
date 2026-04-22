@@ -9,16 +9,22 @@
     button:hover { background: #1e293b; }
     button.secondary { background: white; color: #0f172a; margin-top: 8px; }
     button.secondary:hover { background: #f1f5f9; }
+    button.danger { border-color: #b91c1c; color: #b91c1c; }
+    button.danger:hover { background: #fef2f2; }
+    button[disabled] { opacity: 0.6; cursor: default; }
+    #savedNote { margin-bottom: 8px; font-size: 13px; color: #15803d; }
     #status { margin-top: 10px; color: #475569; font-size: 13px; min-height: 18px; }
     .hint { margin-top: 10px; font-size: 11px; color: #94a3b8; }
     a { color: #2563eb; }
   </style>
 </head>
 <body>
-  <button id="save">Save current page</button>
+  <div id="savedNote" hidden>Saved to your library ✓</div>
+  <button id="save" hidden>Save current page</button>
+  <button id="remove" class="secondary danger" hidden>Remove from library</button>
   <button id="openSite" class="secondary">Open bookmarks</button>
   <div id="status"></div>
   <div class="hint">Not configured? <a href="#" id="openOptions">Open settings</a></div>
-  <script src="popup.js"></script>
+  <script src="popup.js" type="module"></script>
 </body>
 </html>

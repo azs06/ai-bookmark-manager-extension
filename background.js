@@ -36,6 +36,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleSave(msg).then(sendResponse);
     return true; // keep channel open for async reply
   }
+  if (msg?.type === 'remove') {
+    handleRemove(msg).then(sendResponse);
+    return true;
+  }
+  if (msg?.type === 'check-saved') {
+    isUrlSaved(msg.url).then((saved) => sendResponse({ saved }));
+    return true;
+  }
   if (msg?.type === 'sync-hashes') {
     syncSavedHashes().then(() => sendResponse({ ok: true }));
     return true;
@@ -86,6 +94,22 @@ async function handleSave({ url, title }) {
   }
 }
 
+// Remove is not queued on transient failure — unlike save, the user expects an
+// immediate success/failure answer and the action is cheap to retry manually.
+async function handleRemove({ url }) {
+  try {
+    const resp = await postRemove({ url });
+    await forgetSavedUrl(url);
+    return { ok: true, ...resp };
+  } catch (err) {
+    if (err?.authRequired) {
+      await openDashboard();
+      return { ok: false, authRequired: true, error: err.message };
+    }
+    return { ok: false, error: err?.message ?? 'Remove failed' };
+  }
+}
+
 // Cookie-based auth: credentials: 'include' sends the CF_Authorization cookie
 // the user picked up when they logged into the PWA. redirect: 'manual' lets us
 // detect an expired session — CF Access responds with a 302 to its login page,
@@ -123,6 +147,37 @@ async function postBookmark(body) {
     }
 
     throw makeError(message);
+  }
+  return r.json();
+}
+
+async function postRemove(body) {
+  const { apiBase } = await chrome.storage.local.get(['apiBase']);
+  if (!apiBase) {
+    throw makeError('Open settings and configure the API base URL first.');
+  }
+
+  let r;
+  try {
+    r = await fetch(`${apiBase}/api/bookmarks/remove`, {
+      method: 'POST',
+      credentials: 'include',
+      redirect: 'manual',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw makeError('Network error while removing bookmark.');
+  }
+
+  if (r.type === 'opaqueredirect') {
+    throw makeError('Session expired. Log in to AI Bookmarks again.', { authRequired: true });
+  }
+  if (!r.ok) {
+    if (r.status === 401 || r.status === 403) {
+      throw makeError('Session expired. Log in to AI Bookmarks again.', { authRequired: true });
+    }
+    throw makeError(await readErrorMessage(r));
   }
   return r.json();
 }
@@ -180,6 +235,21 @@ async function recordSavedUrl(rawUrl) {
     const set = new Set(Array.isArray(list) ? list : []);
     if (set.has(hash)) return;
     set.add(hash);
+    await chrome.storage.local.set({ [SAVED_HASHES_KEY]: [...set] });
+  } catch {
+    // Ignore; next full sync will reconcile.
+  }
+  await refreshActiveTabIcon();
+}
+
+async function forgetSavedUrl(rawUrl) {
+  if (!isTrackableUrl(rawUrl)) return;
+  try {
+    const hash = await hashUrl(normalizeUrl(rawUrl));
+    const { [SAVED_HASHES_KEY]: list } = await chrome.storage.local.get(SAVED_HASHES_KEY);
+    const set = new Set(Array.isArray(list) ? list : []);
+    if (!set.has(hash)) return;
+    set.delete(hash);
     await chrome.storage.local.set({ [SAVED_HASHES_KEY]: [...set] });
   } catch {
     // Ignore; next full sync will reconcile.
