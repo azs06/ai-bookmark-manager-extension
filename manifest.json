@@ -3,7 +3,7 @@
   "name": "AI Bookmarks",
   "version": "0.1.0",
   "description": "Companion extension for the AI Bookmark Manager app.",
-  "permissions": ["activeTab", "storage", "alarms", "bookmarks"],
+  "permissions": ["activeTab", "storage", "alarms", "bookmarks", "tabs"],
   "optional_host_permissions": [
     "https://*/*",
     "http://localhost/*",

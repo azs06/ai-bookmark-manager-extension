@@ -45,6 +45,8 @@ $('save').addEventListener('click', async () => {
     await chrome.permissions.remove({ origins: [currentPattern] });
   }
 
+  chrome.runtime.sendMessage({ type: 'sync-hashes' });
+
   const ok = $('ok');
   ok.hidden = false;
   setTimeout(() => { ok.hidden = true; }, 1500);
@@ -110,6 +112,7 @@ async function runImport() {
 
   status.textContent = `Done. Imported ${imported}, skipped ${skipped} duplicate${skipped === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`;
   btn.disabled = false;
+  chrome.runtime.sendMessage({ type: 'sync-hashes' });
 }
 
 // Walk the bookmark tree, emitting {url, title, tags} for every http(s) bookmark.
