@@ -133,7 +133,7 @@ async function renderAlreadySubscribed(feedId) {
     link.addEventListener('click', async (e) => {
       e.preventDefault();
       await chrome.tabs.create({
-        url: `${apiBase}/?view=feeds&feed_id=${feedId}`,
+        url: `${apiBase}/feeds?feed_id=${feedId}`,
         active: true,
       });
       window.close();
