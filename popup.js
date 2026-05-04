@@ -5,6 +5,7 @@ const savedNote = document.getElementById('savedNote');
 const saveBtn = document.getElementById('save');
 const removeBtn = document.getElementById('remove');
 const subscribeBtn = document.getElementById('subscribe');
+const shortenBtn = document.getElementById('shortenCopy');
 const candidatesEl = document.getElementById('candidates');
 
 const activeTab = await getActiveTab();
@@ -16,11 +17,13 @@ if (!tabUrl) {
   saveBtn.hidden = false;
   saveBtn.disabled = true;
   subscribeBtn.disabled = true;
+  shortenBtn.disabled = true;
 } else if (!isTrackableUrl(tabUrl)) {
   status.textContent = "Can't save this kind of page.";
   saveBtn.hidden = false;
   saveBtn.disabled = true;
   subscribeBtn.disabled = true;
+  shortenBtn.disabled = true;
 } else {
   const { saved } = await sendMessage({ type: 'check-saved', url: tabUrl });
   renderSavedState(saved);
@@ -68,6 +71,46 @@ removeBtn.addEventListener('click', async () => {
 
   status.textContent = resp.removed ? 'Removed ✓' : 'Not in library.';
   renderSavedState(false);
+});
+
+shortenBtn.addEventListener('click', async () => {
+  status.textContent = 'Shortening…';
+  shortenBtn.disabled = true;
+  const resp = await sendMessage({ type: 'shortenCopy', url: tabUrl, title: tabTitle });
+  shortenBtn.disabled = false;
+
+  if (resp?.authRequired) {
+    status.textContent = 'Session expired — log in, then try again.';
+    return;
+  }
+  if (resp?.queued) {
+    // Server has to mint the code, so we can't synthesize a short URL
+    // offline. Tell the user the save was queued and to come back.
+    status.textContent = 'Saved offline — short URL will be ready when you’re back online. Reopen this popup to copy.';
+    return;
+  }
+  if (!resp?.ok || !resp?.short_url) {
+    status.textContent = resp?.error ?? 'Shorten failed.';
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(resp.short_url);
+    status.innerHTML = '';
+    const label = document.createTextNode('Copied: ');
+    const code = document.createElement('code');
+    code.textContent = resp.short_url;
+    status.append(label, code);
+  } catch {
+    // Clipboard write blocked (rare in popup user-gesture context). Show
+    // the URL so the user can copy it manually instead of silently failing.
+    status.innerHTML = '';
+    const label = document.createTextNode('Tap to copy: ');
+    const code = document.createElement('code');
+    code.textContent = resp.short_url;
+    status.append(label, code);
+  }
+  renderSavedState(true);
 });
 
 subscribeBtn.addEventListener('click', () => void trySubscribe(tabUrl));

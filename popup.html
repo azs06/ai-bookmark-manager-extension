@@ -15,6 +15,7 @@
     #savedNote { margin-bottom: 8px; font-size: 13px; color: #15803d; }
     #status { margin-top: 10px; color: #475569; font-size: 13px; min-height: 18px; }
     #status a { color: #2563eb; text-decoration: underline; cursor: pointer; }
+    #status code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; word-break: break-all; }
     .hint { margin-top: 10px; font-size: 11px; color: #94a3b8; }
     a { color: #2563eb; }
     .rss-icon { flex-shrink: 0; }
@@ -42,6 +43,7 @@
 <body>
   <div id="savedNote" hidden>Saved to your library ✓</div>
   <button id="save" hidden>Save current page</button>
+  <button id="shortenCopy" class="secondary">Shorten &amp; copy URL</button>
   <button id="remove" class="secondary danger" hidden>Remove from library</button>
   <button id="subscribe" class="secondary">
     <svg class="rss-icon" viewBox="0 0 24 24" width="14" height="14" xmlns="http://www.w3.org/2000/svg">

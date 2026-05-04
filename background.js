@@ -36,6 +36,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     handleSave(msg).then(sendResponse);
     return true; // keep channel open for async reply
   }
+  if (msg?.type === 'shortenCopy') {
+    handleShortenCopy(msg).then(sendResponse);
+    return true;
+  }
   if (msg?.type === 'remove') {
     handleRemove(msg).then(sendResponse);
     return true;
@@ -95,6 +99,31 @@ async function handleSave({ url, title }) {
       return { ok: false, queued: true, error: err.message };
     }
     return { ok: false, error: err?.message ?? 'Save failed' };
+  }
+}
+
+// Bundles save + shorten into one request. The server returns short_url
+// inline so the popup can copy without a second round-trip. On transient
+// failure the save still queues with auto_shorten persisted, so the next
+// flushQueue mints the code — the popup messaging tells the user to come
+// back once they're online.
+async function handleShortenCopy({ url, title }) {
+  try {
+    const resp = await postBookmark({ url, title, auto_shorten: true });
+    await recordSavedUrl(url);
+    return { ok: true, ...resp };
+  } catch (err) {
+    if (err?.authRequired) {
+      await enqueue({ url, title, ts: Date.now(), auto_shorten: true });
+      await openDashboard();
+      return { ok: false, authRequired: true, queued: true, error: err.message };
+    }
+    if (err?.transient) {
+      await enqueue({ url, title, ts: Date.now(), auto_shorten: true });
+      chrome.alarms.create(FLUSH_ALARM, { delayInMinutes: 1 });
+      return { ok: false, queued: true, error: err.message };
+    }
+    return { ok: false, error: err?.message ?? 'Shorten failed' };
   }
 }
 
@@ -280,7 +309,13 @@ async function flushQueue() {
   const remaining = [];
   for (const item of queue) {
     try {
-      await postBookmark(item);
+      // Re-project the queued item to the API body shape; the queue stores
+      // {url, title, ts, auto_shorten?} so unknown future fields don't leak.
+      await postBookmark({
+        url: item.url,
+        title: item.title,
+        ...(item.auto_shorten ? { auto_shorten: true } : {}),
+      });
       await recordSavedUrl(item.url);
     } catch (err) {
       // If auth is expired, don't pound on the gate for every queued item.
