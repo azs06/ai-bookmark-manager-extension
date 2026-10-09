@@ -8,19 +8,23 @@ const removeBtn = document.getElementById('remove');
 const subscribeBtn = document.getElementById('subscribe');
 const shortenBtn = document.getElementById('shortenCopy');
 const candidatesEl = document.getElementById('candidates');
+const queueNote = document.getElementById('queueNote');
+
+const PENDING = Symbol('pending');
 
 const activeTab = await getActiveTab();
 const tabUrl = activeTab?.url;
 const tabTitle = activeTab?.title;
 const tabId = activeTab?.id;
 
-// On-device summary runs in parallel with check-saved so it's already done
-// (or close to it) by the time the user clicks Save. If the API isn't
-// available, the model isn't downloaded, or anything fails, this resolves
-// to null and the backend falls through to Gemma normally.
-const summaryPreflight = (tabUrl && isTrackableUrl(tabUrl) && tabId)
-  ? prepareSummary(tabId).catch(() => null)
-  : Promise.resolve(null);
+// On-device summary starts as soon as the popup opens so it's already done
+// (or close to it) by the time the user clicks Save. It only runs when the
+// user opted in and the page isn't saved yet — otherwise nothing would use
+// it. If the API isn't available, the model isn't downloaded, or anything
+// fails, this resolves to null and the backend falls through to Gemma.
+let summaryPreflight = Promise.resolve(null);
+
+void sendMessage({ type: 'queue-status' }).then(renderQueueStatus);
 
 if (!tabUrl) {
   status.textContent = 'No active tab.';
@@ -35,34 +39,39 @@ if (!tabUrl) {
   subscribeBtn.disabled = true;
   shortenBtn.disabled = true;
 } else {
-  const { saved } = await sendMessage({ type: 'check-saved', url: tabUrl });
+  const [{ saved }, { onDeviceSummary }] = await Promise.all([
+    sendMessage({ type: 'check-saved', url: tabUrl }),
+    chrome.storage.local.get('onDeviceSummary'),
+  ]);
   renderSavedState(saved);
+  if (onDeviceSummary && !saved && tabId) {
+    summaryPreflight = prepareSummary(tabId).catch(() => null);
+  }
 }
 
 saveBtn.addEventListener('click', async () => {
   saveBtn.disabled = true;
-  const summary = await waitForSummaryWithStatus();
+  // Save is the deliberate "file this away" action, so it's worth briefly
+  // waiting for a summary that's still being produced.
+  const summary = await waitForSummary(4000);
   status.textContent = 'Saving…';
   const resp = await sendMessage({
     type: 'save',
     url: tabUrl,
     title: tabTitle,
-    ...(summary ? { ai_summary: summary.summary, summary_source: summary.source } : {}),
+    ...summaryFields(summary),
   });
   saveBtn.disabled = false;
 
-  if (chrome.runtime.lastError) {
-    status.textContent = 'Queued (offline). Will sync later.';
-    return;
-  }
-  if (resp?.authRequired) {
-    status.textContent = 'Session expired — log in, then click Save again.';
+  if (resp?.queued) {
+    status.textContent = resp.authRequired
+      ? 'Session expired — queued. It will save after you log in.'
+      : `${resp.error ?? 'Temporary error.'} Queued for retry.`;
+    sendMessage({ type: 'queue-status' }).then(renderQueueStatus);
     return;
   }
   if (!resp?.ok) {
-    status.textContent = resp?.queued
-      ? `${resp.error ?? 'Temporary error.'} Queued for retry.`
-      : (resp?.error ?? 'Error saving.');
+    status.textContent = resp?.error ?? 'Error saving.';
     return;
   }
 
@@ -91,24 +100,25 @@ removeBtn.addEventListener('click', async () => {
 
 shortenBtn.addEventListener('click', async () => {
   shortenBtn.disabled = true;
-  const summary = await waitForSummaryWithStatus();
+  // Shorten-and-copy is latency-sensitive: use a summary only if it's
+  // already ready rather than holding the copy behind the model.
+  const summary = await waitForSummary(0);
   status.textContent = 'Shortening…';
   const resp = await sendMessage({
     type: 'shortenCopy',
     url: tabUrl,
     title: tabTitle,
-    ...(summary ? { ai_summary: summary.summary, summary_source: summary.source } : {}),
+    ...summaryFields(summary),
   });
   shortenBtn.disabled = false;
 
-  if (resp?.authRequired) {
-    status.textContent = 'Session expired — log in, then try again.';
-    return;
-  }
   if (resp?.queued) {
     // Server has to mint the code, so we can't synthesize a short URL
     // offline. Tell the user the save was queued and to come back.
-    status.textContent = 'Saved offline — short URL will be ready when you’re back online. Reopen this popup to copy.';
+    status.textContent = resp.authRequired
+      ? 'Session expired — queued. Log in, then reopen this popup to copy the short URL.'
+      : 'Saved offline — short URL will be ready when you’re back online. Reopen this popup to copy.';
+    sendMessage({ type: 'queue-status' }).then(renderQueueStatus);
     return;
   }
   if (!resp?.ok || !resp?.short_url) {
@@ -118,22 +128,34 @@ shortenBtn.addEventListener('click', async () => {
 
   try {
     await navigator.clipboard.writeText(resp.short_url);
-    status.innerHTML = '';
-    const label = document.createTextNode('Copied: ');
-    const code = document.createElement('code');
-    code.textContent = resp.short_url;
-    status.append(label, code);
+    showShortUrl('Copied: ', resp.short_url);
   } catch {
-    // Clipboard write blocked (rare in popup user-gesture context). Show
-    // the URL so the user can copy it manually instead of silently failing.
-    status.innerHTML = '';
-    const label = document.createTextNode('Tap to copy: ');
-    const code = document.createElement('code');
-    code.textContent = resp.short_url;
-    status.append(label, code);
+    // Clipboard write blocked (e.g. the popup lost focus during the request).
+    // A click is a fresh user gesture, so retry the copy from there.
+    const code = showShortUrl('Click to copy: ', resp.short_url);
+    code.classList.add('copyable');
+    code.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(resp.short_url);
+        showShortUrl('Copied: ', resp.short_url);
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        status.firstChild.textContent = 'Selected — press Ctrl/⌘+C: ';
+      }
+    });
   }
   renderSavedState(true);
 });
+
+function showShortUrl(label, shortUrl) {
+  const code = document.createElement('code');
+  code.textContent = shortUrl;
+  status.replaceChildren(document.createTextNode(label), code);
+  return code;
+}
 
 subscribeBtn.addEventListener('click', () => void trySubscribe(tabUrl));
 
@@ -240,8 +262,42 @@ async function getActiveTab() {
 
 function sendMessage(msg) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(msg, (resp) => resolve(resp ?? {}));
+    chrome.runtime.sendMessage(msg, (resp) => {
+      // lastError is only readable inside this callback.
+      if (chrome.runtime.lastError) {
+        resolve({ ok: false, error: chrome.runtime.lastError.message });
+        return;
+      }
+      resolve(resp ?? {});
+    });
   });
+}
+
+// Shows how many saves are waiting in the offline queue, and any queued saves
+// the server permanently rejected so they don't vanish silently.
+function renderQueueStatus({ queued = 0, failed = [] } = {}) {
+  queueNote.replaceChildren();
+  if (queued) {
+    queueNote.append(`${queued} save${queued === 1 ? '' : 's'} waiting to sync. `);
+  }
+  if (failed.length) {
+    const [latest] = failed;
+    queueNote.append(
+      `${failed.length} queued save${failed.length === 1 ? '' : 's'} couldn't sync (latest: ${latest.url} — ${latest.error}). `,
+    );
+    const dismiss = document.createElement('a');
+    dismiss.textContent = 'Dismiss';
+    dismiss.addEventListener('click', async () => {
+      await sendMessage({ type: 'dismiss-failed' });
+      renderQueueStatus(await sendMessage({ type: 'queue-status' }));
+    });
+    queueNote.append(dismiss);
+  }
+  queueNote.hidden = !queueNote.childNodes.length;
+}
+
+function summaryFields(summary) {
+  return summary ? { ai_summary: summary.summary, summary_source: summary.source } : {};
 }
 
 // Pulls a chunk of readable text from the active tab. Walks main → article →
@@ -266,20 +322,19 @@ async function prepareSummary(targetTabId) {
   return summarizeOnDevice(text);
 }
 
-// Show a "Summarizing…" status only if the preflight isn't already done.
-// Caps the wait at 4s — beyond that the user expects the click to do something
-// and Gemma will produce a summary on the backend anyway.
-async function waitForSummaryWithStatus() {
-  const fast = await Promise.race([
-    summaryPreflight,
-    new Promise((r) => setTimeout(() => r('pending'), 150)),
-  ]);
-  if (fast !== 'pending') return fast;
+// Returns the preflight summary if it settles within maxWaitMs, else null.
+// Shows "Summarizing…" only if the preflight isn't already (nearly) done.
+// Callers cap the wait — beyond that the user expects the click to do
+// something, and Gemma will produce a summary on the backend anyway.
+async function waitForSummary(maxWaitMs) {
+  const fast = await raceTimeout(summaryPreflight, 150, PENDING);
+  if (fast !== PENDING) return fast;
+  if (!maxWaitMs) return null;
 
   status.textContent = 'Summarizing…';
-  const slow = await Promise.race([
-    summaryPreflight,
-    new Promise((r) => setTimeout(() => r(null), 4000)),
-  ]);
-  return slow;
+  return raceTimeout(summaryPreflight, maxWaitMs, null);
+}
+
+function raceTimeout(promise, ms, fallback) {
+  return Promise.race([promise, new Promise((r) => setTimeout(() => r(fallback), ms))]);
 }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AI Bookmarks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Companion extension for the AI Bookmark Manager app.",
   "permissions": ["activeTab", "storage", "alarms", "bookmarks", "tabs", "scripting"],
   "optional_host_permissions": [
