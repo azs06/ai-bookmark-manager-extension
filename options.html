@@ -15,6 +15,9 @@
     h2 { font-size: 15px; margin-top: 20px; margin-bottom: 4px; }
     #importStatus { margin-top: 10px; font-size: 13px; color: #475569; min-height: 18px; }
     #import:disabled { opacity: 0.5; cursor: not-allowed; }
+    label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 500; }
+    label.check input { width: auto; margin: 3px 0 0; }
+    .sub { display: block; font-weight: 400; color: #475569; font-size: 13px; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -30,8 +33,17 @@
   <div id="saveStatus" style="margin-top: 10px; font-size: 13px; color: #475569; min-height: 18px;"></div>
 
   <hr />
+  <h2>On-device summaries</h2>
+  <label class="check">
+    <input id="onDeviceSummary" type="checkbox" />
+    <span>Summarize pages with Chrome's built-in AI before saving
+      <span class="sub">Reads the text of the page you're saving, summarizes it on this device, and sends the summary with the bookmark. Off by default: for pages you see while logged in, this can include private content the server couldn't otherwise reach.</span>
+    </span>
+  </label>
+
+  <hr />
   <h2>Import Chrome bookmarks</h2>
-  <p>One-time migration. Folder paths become tags. Duplicates are skipped. Items won't be AI-enriched automatically — click ↻ on any card to enrich.</p>
+  <p>One-time migration. Folder paths become tags. Duplicates are skipped. Items won't be AI-enriched automatically — click ↻ on any card to enrich. The import keeps running if you close this page.</p>
   <button id="import">Import all</button>
   <div id="importStatus"></div>
 

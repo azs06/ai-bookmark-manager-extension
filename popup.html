@@ -16,6 +16,9 @@
     #status { margin-top: 10px; color: #475569; font-size: 13px; min-height: 18px; }
     #status a { color: #2563eb; text-decoration: underline; cursor: pointer; }
     #status code { background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; word-break: break-all; }
+    #status code.copyable { cursor: pointer; }
+    #queueNote { margin-top: 10px; padding: 6px 8px; border-radius: 6px; background: #f1f5f9; color: #475569; font-size: 12px; }
+    #queueNote a { color: #2563eb; cursor: pointer; }
     .hint { margin-top: 10px; font-size: 11px; color: #94a3b8; }
     a { color: #2563eb; }
     .rss-icon { flex-shrink: 0; }
@@ -57,6 +60,7 @@
   <div id="candidates"></div>
   <button id="openSite" class="secondary">Open bookmarks</button>
   <div id="status"></div>
+  <div id="queueNote" hidden></div>
   <div class="hint">Not configured? <a href="#" id="openOptions">Open settings</a></div>
   <script src="popup.js" type="module"></script>
 </body>

@@ -1,17 +1,31 @@
 const $ = (id) => document.getElementById(id);
 
-// Chrome's bookmark tree has synthetic top-level folders whose names carry no
-// user-intent meaning, so we don't include them as tags.
-const SYNTHETIC_ROOTS = new Set([
-  'Bookmarks bar', 'Bookmarks Bar',
-  'Other bookmarks', 'Other Bookmarks',
-  'Mobile bookmarks', 'Mobile Bookmarks',
-]);
+const IMPORT_STATUS_KEY = 'import_status';
+
+// Plain http is only allowed where the manifest's optional_host_permissions
+// can grant it; anything else must be https.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1']);
 
 (async () => {
-  const cfg = await chrome.storage.local.get(['apiBase']);
+  const cfg = await chrome.storage.local.get(['apiBase', 'onDeviceSummary']);
   $('apiBase').value = cfg.apiBase ?? '';
+  $('onDeviceSummary').checked = !!cfg.onDeviceSummary;
+
+  const { running, status } = await chrome.runtime.sendMessage({ type: 'import-status' });
+  if (status?.state === 'running' && !running) {
+    // The service worker was restarted mid-import.
+    renderImportStatus({
+      state: 'error',
+      message: 'The last import was interrupted. Run it again — already-imported bookmarks are skipped.',
+    });
+  } else {
+    renderImportStatus(status);
+  }
 })();
+
+$('onDeviceSummary').addEventListener('change', (e) => {
+  chrome.storage.local.set({ onDeviceSummary: e.target.checked });
+});
 
 $('save').addEventListener('click', async () => {
   const saveStatus = $('saveStatus');
@@ -34,7 +48,13 @@ $('save').addEventListener('click', async () => {
   const current = await chrome.storage.local.get(['apiBase']);
   const currentPattern = current.apiBase ? toOriginPattern(current.apiBase) : null;
   const nextPattern = toOriginPattern(apiBase);
-  const granted = await chrome.permissions.request({ origins: [nextPattern] });
+  let granted;
+  try {
+    granted = await chrome.permissions.request({ origins: [nextPattern] });
+  } catch (err) {
+    saveStatus.textContent = `Can't request access to ${nextPattern}: ${err?.message ?? err}`;
+    return;
+  }
   if (!granted) {
     saveStatus.textContent = 'Host permission is required to talk to your app.';
     return;
@@ -53,85 +73,33 @@ $('save').addEventListener('click', async () => {
   saveStatus.textContent = `Saved ${apiBase}`;
 });
 
-$('import').addEventListener('click', runImport);
+$('import').addEventListener('click', () => {
+  renderImportStatus({ state: 'running' });
+  chrome.runtime.sendMessage({ type: 'import-bookmarks' });
+});
 
-async function runImport() {
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'session' && IMPORT_STATUS_KEY in changes) {
+    renderImportStatus(changes[IMPORT_STATUS_KEY].newValue);
+  }
+});
+
+function renderImportStatus(s) {
   const btn = $('import');
   const status = $('importStatus');
-  btn.disabled = true;
-  status.textContent = 'Reading Chrome bookmarks…';
+  btn.disabled = s?.state === 'running';
 
-  const { apiBase } = await chrome.storage.local.get(['apiBase']);
-  if (!apiBase) {
-    status.textContent = 'Set and save the API base URL first.';
-    btn.disabled = false;
-    return;
+  if (!s) {
+    status.textContent = '';
+  } else if (s.state === 'error') {
+    status.textContent = s.message;
+  } else if (s.state === 'running' && !s.total) {
+    status.textContent = 'Reading Chrome bookmarks…';
+  } else if (s.state === 'running') {
+    status.textContent = `${s.done}/${s.total} processed — imported ${s.imported}, skipped ${s.skipped}${s.failed ? `, failed ${s.failed}` : ''}`;
+  } else {
+    status.textContent = `Done. Imported ${s.imported}, skipped ${s.skipped} duplicate${s.skipped === 1 ? '' : 's'}${s.failed ? `, ${s.failed} failed` : ''}.`;
   }
-
-  const tree = await chrome.bookmarks.getTree();
-  const items = flattenTree(tree);
-  if (!items.length) {
-    status.textContent = 'No bookmarks found.';
-    btn.disabled = false;
-    return;
-  }
-
-  status.textContent = `Found ${items.length} bookmarks. Importing…`;
-
-  const BATCH = 50;
-  let imported = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (let i = 0; i < items.length; i += BATCH) {
-    const chunk = items.slice(i, i + BATCH);
-    try {
-      const r = await fetch(`${apiBase}/api/bookmarks/import`, {
-        method: 'POST',
-        credentials: 'include',
-        redirect: 'manual',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: chunk }),
-      });
-      if (r.type === 'opaqueredirect') {
-        status.textContent = 'Session expired — opening dashboard to log in…';
-        await chrome.tabs.create({ url: apiBase, active: true });
-        btn.disabled = false;
-        return;
-      }
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      imported += d.imported ?? 0;
-      skipped += d.skipped ?? 0;
-    } catch {
-      failed += chunk.length;
-    }
-    const done = Math.min(i + BATCH, items.length);
-    status.textContent = `${done}/${items.length} processed — imported ${imported}, skipped ${skipped}${failed ? `, failed ${failed}` : ''}`;
-  }
-
-  status.textContent = `Done. Imported ${imported}, skipped ${skipped} duplicate${skipped === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`;
-  btn.disabled = false;
-  chrome.runtime.sendMessage({ type: 'sync-hashes' });
-}
-
-// Walk the bookmark tree, emitting {url, title, tags} for every http(s) bookmark.
-// tags = path of user-created folder titles from the synthetic root down.
-function flattenTree(nodes, path = []) {
-  const out = [];
-  for (const node of nodes) {
-    if (node.url) {
-      if (/^https?:/i.test(node.url)) {
-        out.push({ url: node.url, title: node.title || null, tags: path });
-      }
-      continue;
-    }
-    if (!node.children) continue;
-    const isSynthetic = !node.title || SYNTHETIC_ROOTS.has(node.title);
-    const nextPath = isSynthetic ? path : [...path, node.title];
-    out.push(...flattenTree(node.children, nextPath));
-  }
-  return out;
 }
 
 function normalizeApiBase(raw) {
@@ -145,8 +113,13 @@ function normalizeApiBase(raw) {
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error('API base URL must use http or https.');
   }
+  if (url.protocol === 'http:' && !LOCAL_HOSTS.has(url.hostname)) {
+    throw new Error('Use https — plain http is only supported for localhost and 127.0.0.1.');
+  }
 
-  return url.origin;
+  // Keep the path so deployments under a subpath work; drop query, hash and
+  // trailing slashes so `${apiBase}/api/...` joins cleanly.
+  return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
 
 function toOriginPattern(apiBase) {
