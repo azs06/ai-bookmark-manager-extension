@@ -82,19 +82,20 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   updateIconForTab(tabId, tab.url);
 });
 
-async function handleSave({ url, title }) {
+async function handleSave({ url, title, ai_summary, summary_source }) {
+  const extras = ai_summary ? { ai_summary, summary_source } : {};
   try {
-    const resp = await postBookmark({ url, title });
+    const resp = await postBookmark({ url, title, ...extras });
     await recordSavedUrl(url);
     return { ok: true, ...resp };
   } catch (err) {
     if (err?.authRequired) {
-      await enqueue({ url, title, ts: Date.now() });
+      await enqueue({ url, title, ts: Date.now(), ...extras });
       await openDashboard();
       return { ok: false, authRequired: true, queued: true, error: err.message };
     }
     if (err?.transient) {
-      await enqueue({ url, title, ts: Date.now() });
+      await enqueue({ url, title, ts: Date.now(), ...extras });
       chrome.alarms.create(FLUSH_ALARM, { delayInMinutes: 1 });
       return { ok: false, queued: true, error: err.message };
     }
@@ -107,19 +108,20 @@ async function handleSave({ url, title }) {
 // failure the save still queues with auto_shorten persisted, so the next
 // flushQueue mints the code — the popup messaging tells the user to come
 // back once they're online.
-async function handleShortenCopy({ url, title }) {
+async function handleShortenCopy({ url, title, ai_summary, summary_source }) {
+  const extras = { auto_shorten: true, ...(ai_summary ? { ai_summary, summary_source } : {}) };
   try {
-    const resp = await postBookmark({ url, title, auto_shorten: true });
+    const resp = await postBookmark({ url, title, ...extras });
     await recordSavedUrl(url);
     return { ok: true, ...resp };
   } catch (err) {
     if (err?.authRequired) {
-      await enqueue({ url, title, ts: Date.now(), auto_shorten: true });
+      await enqueue({ url, title, ts: Date.now(), ...extras });
       await openDashboard();
       return { ok: false, authRequired: true, queued: true, error: err.message };
     }
     if (err?.transient) {
-      await enqueue({ url, title, ts: Date.now(), auto_shorten: true });
+      await enqueue({ url, title, ts: Date.now(), ...extras });
       chrome.alarms.create(FLUSH_ALARM, { delayInMinutes: 1 });
       return { ok: false, queued: true, error: err.message };
     }
@@ -310,11 +312,13 @@ async function flushQueue() {
   for (const item of queue) {
     try {
       // Re-project the queued item to the API body shape; the queue stores
-      // {url, title, ts, auto_shorten?} so unknown future fields don't leak.
+      // {url, title, ts, auto_shorten?, ai_summary?, summary_source?} so
+      // unknown future fields don't leak.
       await postBookmark({
         url: item.url,
         title: item.title,
         ...(item.auto_shorten ? { auto_shorten: true } : {}),
+        ...(item.ai_summary ? { ai_summary: item.ai_summary, summary_source: item.summary_source } : {}),
       });
       await recordSavedUrl(item.url);
     } catch (err) {

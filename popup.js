@@ -1,4 +1,5 @@
 import { isTrackableUrl } from './lib/url.js';
+import { summarizeOnDevice } from './lib/summarizers.js';
 
 const status = document.getElementById('status');
 const savedNote = document.getElementById('savedNote');
@@ -11,6 +12,15 @@ const candidatesEl = document.getElementById('candidates');
 const activeTab = await getActiveTab();
 const tabUrl = activeTab?.url;
 const tabTitle = activeTab?.title;
+const tabId = activeTab?.id;
+
+// On-device summary runs in parallel with check-saved so it's already done
+// (or close to it) by the time the user clicks Save. If the API isn't
+// available, the model isn't downloaded, or anything fails, this resolves
+// to null and the backend falls through to Gemma normally.
+const summaryPreflight = (tabUrl && isTrackableUrl(tabUrl) && tabId)
+  ? prepareSummary(tabId).catch(() => null)
+  : Promise.resolve(null);
 
 if (!tabUrl) {
   status.textContent = 'No active tab.';
@@ -30,9 +40,15 @@ if (!tabUrl) {
 }
 
 saveBtn.addEventListener('click', async () => {
-  status.textContent = 'Saving…';
   saveBtn.disabled = true;
-  const resp = await sendMessage({ type: 'save', url: tabUrl, title: tabTitle });
+  const summary = await waitForSummaryWithStatus();
+  status.textContent = 'Saving…';
+  const resp = await sendMessage({
+    type: 'save',
+    url: tabUrl,
+    title: tabTitle,
+    ...(summary ? { ai_summary: summary.summary, summary_source: summary.source } : {}),
+  });
   saveBtn.disabled = false;
 
   if (chrome.runtime.lastError) {
@@ -74,9 +90,15 @@ removeBtn.addEventListener('click', async () => {
 });
 
 shortenBtn.addEventListener('click', async () => {
-  status.textContent = 'Shortening…';
   shortenBtn.disabled = true;
-  const resp = await sendMessage({ type: 'shortenCopy', url: tabUrl, title: tabTitle });
+  const summary = await waitForSummaryWithStatus();
+  status.textContent = 'Shortening…';
+  const resp = await sendMessage({
+    type: 'shortenCopy',
+    url: tabUrl,
+    title: tabTitle,
+    ...(summary ? { ai_summary: summary.summary, summary_source: summary.source } : {}),
+  });
   shortenBtn.disabled = false;
 
   if (resp?.authRequired) {
@@ -220,4 +242,44 @@ function sendMessage(msg) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(msg, (resp) => resolve(resp ?? {}));
   });
+}
+
+// Pulls a chunk of readable text from the active tab. Walks main → article →
+// body so we send the meaty part to the summarizer rather than nav chrome.
+// Capped at 8000 chars: more than enough for tldr quality, keeps the call
+// fast on long pages, and stays well under the model's input window.
+async function extractPageText(targetTabId) {
+  const [{ result } = {}] = await chrome.scripting.executeScript({
+    target: { tabId: targetTabId },
+    func: () => {
+      const root = document.querySelector('main, article, [role="main"]') ?? document.body;
+      const text = (root?.innerText ?? '').trim();
+      return text.slice(0, 8000);
+    },
+  });
+  return result || '';
+}
+
+async function prepareSummary(targetTabId) {
+  const text = await extractPageText(targetTabId);
+  if (text.length < 200) return null; // too little signal — let Gemma handle it
+  return summarizeOnDevice(text);
+}
+
+// Show a "Summarizing…" status only if the preflight isn't already done.
+// Caps the wait at 4s — beyond that the user expects the click to do something
+// and Gemma will produce a summary on the backend anyway.
+async function waitForSummaryWithStatus() {
+  const fast = await Promise.race([
+    summaryPreflight,
+    new Promise((r) => setTimeout(() => r('pending'), 150)),
+  ]);
+  if (fast !== 'pending') return fast;
+
+  status.textContent = 'Summarizing…';
+  const slow = await Promise.race([
+    summaryPreflight,
+    new Promise((r) => setTimeout(() => r(null), 4000)),
+  ]);
+  return slow;
 }
