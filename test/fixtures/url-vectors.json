@@ -1,0 +1,37 @@
+[
+  {
+    "input": "https://example.com/article?id=42&utm_source=newsletter&utm_medium=email#comments",
+    "normalized": "https://example.com/article?id=42",
+    "hash": "a8d7c7dedb829a879741bd8c0858b1ba034785cc76b4a474995fde4d1957e31e"
+  },
+  {
+    "input": "https://example.com:443/path",
+    "normalized": "https://example.com/path",
+    "hash": "5faa4bf4918ff56562141cc328545ec8f7b6dd27470cbdf4a7487593b3e83738"
+  },
+  {
+    "input": "http://example.com:80/",
+    "normalized": "http://example.com/",
+    "hash": "2a1b402420ef46577471cdc7409b0fa2c6a204db316e59ade2d805435489a067"
+  },
+  {
+    "input": "http://localhost:8787/dashboard",
+    "normalized": "http://localhost:8787/dashboard",
+    "hash": "eae15aacaa171b9fc99ab688a04279612504e390961605cb641bda539bc3a6e7"
+  },
+  {
+    "input": "https://example.com/search?q=hello%20world&fbclid=abc123",
+    "normalized": "https://example.com/search?q=hello+world",
+    "hash": "b52a75e8886d5839104fe71d2ba9d99dc7d239271978020d33792badf5147934"
+  },
+  {
+    "input": "https://Example.COM/Path/?b=2&a=1",
+    "normalized": "https://example.com/Path/?b=2&a=1",
+    "hash": "fb20ab319454890c0cae22bb9a03b732e40cf44474b0a58a229dbbeefcd024d2"
+  },
+  {
+    "input": "https://example.com/?gclid=x&mc_cid=y&mc_eid=z&_hsenc=a&_hsmi=b&utm_term=c&utm_content=d&utm_campaign=e",
+    "normalized": "https://example.com/",
+    "hash": "0f115db062b7c0dd030b16878c99dea5c354b49dc37b38eb8846179c7783e9d7"
+  }
+]
